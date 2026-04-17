@@ -1,0 +1,447 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  SUPERVISOR
+  AGENT
+}
+
+enum ChannelType {
+  WHATSAPP
+  INSTAGRAM
+  MESSENGER
+}
+
+enum ConversationStatus {
+  OPEN
+  PENDING
+  CLOSED
+}
+
+enum MessageDirection {
+  INBOUND
+  OUTBOUND
+  INTERNAL
+}
+
+enum MessageStatus {
+  PENDING
+  SENT
+  DELIVERED
+  READ
+  FAILED
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  AUDIO
+  VIDEO
+  DOCUMENT
+  FILE
+}
+
+enum ChannelStatus {
+  DISCONNECTED
+  CONNECTING
+  CONNECTED
+  ERROR
+}
+
+enum ConversationPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+model Tenant {
+  id                 String                 @id @default(cuid())
+  name               String
+  slug               String                 @unique
+  createdAt          DateTime               @default(now()) @map("created_at")
+  updatedAt          DateTime               @updatedAt @map("updated_at")
+  users              User[]
+  queues             Queue[]
+  channels           Channel[]
+  contacts           Contact[]
+  conversations      Conversation[]
+  messages           Message[]
+  tags               Tag[]
+  quickReplies       QuickReply[]
+  auditLogs          AuditLog[]
+  kanbanStages       KanbanStage[]
+  channelSessions    ChannelSession[]
+  webhookEvents      WebhookEvent[]
+  jobLogs            JobLog[]
+  internalNotes      InternalNote[]
+  userQueuePerms     UserQueuePermission[]
+  messageAttachments MessageAttachment[]
+
+  @@map("tenants")
+}
+
+model User {
+  id                String                @id @default(cuid())
+  tenantId          String                @map("tenant_id")
+  name              String
+  email             String
+  passwordHash      String                @map("password_hash")
+  refreshTokenHash  String?               @map("refresh_token_hash")
+  role              Role
+  avatarUrl         String?               @map("avatar_url")
+  isActive          Boolean               @default(true) @map("is_active")
+  createdAt         DateTime              @default(now()) @map("created_at")
+  updatedAt         DateTime              @updatedAt @map("updated_at")
+  tenant            Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  conversations     Conversation[]
+  internalNotes     InternalNote[]
+  quickReplies      QuickReply[]
+  auditLogs         AuditLog[]
+  queuePermissions  UserQueuePermission[]
+
+  @@unique([tenantId, email])
+  @@index([tenantId])
+  @@map("users")
+}
+
+model Queue {
+  id               String                @id @default(cuid())
+  tenantId         String                @map("tenant_id")
+  name             String
+  color            String?
+  sortOrder        Int                   @default(0) @map("sort_order")
+  isActive         Boolean               @default(true) @map("is_active")
+  createdAt        DateTime              @default(now()) @map("created_at")
+  updatedAt        DateTime              @updatedAt @map("updated_at")
+  tenant           Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  conversations    Conversation[]
+  userPermissions  UserQueuePermission[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("queues")
+}
+
+model UserQueuePermission {
+  id         String   @id @default(cuid())
+  tenantId   String   @map("tenant_id")
+  userId     String   @map("user_id")
+  queueId    String   @map("queue_id")
+  canRead    Boolean  @default(true) @map("can_read")
+  canWrite   Boolean  @default(false) @map("can_write")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  queue      Queue    @relation(fields: [queueId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, userId, queueId])
+  @@index([tenantId])
+  @@map("user_queue_permissions")
+}
+
+model Channel {
+  id             String           @id @default(cuid())
+  tenantId       String           @map("tenant_id")
+  name           String
+  type           ChannelType
+  status         ChannelStatus    @default(DISCONNECTED)
+  credentialsJson Json?           @map("credentials_json")
+  sessionKey     String?          @map("session_key")
+  webhookSecret  String?          @map("webhook_secret")
+  isActive       Boolean          @default(true) @map("is_active")
+  settings       Json?
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+  tenant         Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  conversations  Conversation[]
+  sessions       ChannelSession[]
+
+  @@index([tenantId, type])
+  @@map("channels")
+}
+
+model ChannelSession {
+  id            String    @id @default(cuid())
+  tenantId      String    @map("tenant_id")
+  channelId     String    @map("channel_id")
+  externalId    String    @map("external_id")
+  status        String
+  metadata      Json?
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  channel       Channel   @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, externalId])
+  @@index([tenantId, channelId])
+  @@map("channel_sessions")
+}
+
+model Contact {
+  id                 String                @id @default(cuid())
+  tenantId           String                @map("tenant_id")
+  name               String?
+  phone              String?
+  email              String?
+  externalId         String?               @map("external_id")
+  profilePicUrl      String?               @map("profile_pic_url")
+  notes              String?
+  metadata           Json?
+  createdAt          DateTime              @default(now()) @map("created_at")
+  updatedAt          DateTime              @updatedAt @map("updated_at")
+  tenant             Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  conversations      Conversation[]
+  contactTags        ContactTag[]
+
+  @@index([tenantId, phone])
+  @@index([tenantId, email])
+  @@map("contacts")
+}
+
+model Conversation {
+  id                String               @id @default(cuid())
+  tenantId          String               @map("tenant_id")
+  contactId         String               @map("contact_id")
+  queueId           String?              @map("queue_id")
+  channelId         String               @map("channel_id")
+  assignedUserId    String?              @map("assigned_user_id")
+  status            ConversationStatus   @default(OPEN)
+  priority          ConversationPriority @default(NORMAL)
+  unreadCount       Int                  @default(0) @map("unread_count")
+  subject           String?
+  lastMessagePreview String?             @map("last_message_preview")
+  startedAt         DateTime             @default(now()) @map("started_at")
+  closedAt          DateTime?            @map("closed_at")
+  lastMessageAt     DateTime?            @map("last_message_at")
+  kanbanStageId     String?              @map("kanban_stage_id")
+  createdAt         DateTime             @default(now()) @map("created_at")
+  updatedAt         DateTime             @updatedAt @map("updated_at")
+  tenant            Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contact           Contact              @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  queue             Queue?               @relation(fields: [queueId], references: [id], onDelete: SetNull)
+  channel           Channel              @relation(fields: [channelId], references: [id], onDelete: Restrict)
+  assignedUser      User?                @relation(fields: [assignedUserId], references: [id], onDelete: SetNull)
+  kanbanStage       KanbanStage?         @relation(fields: [kanbanStageId], references: [id], onDelete: SetNull)
+  messages          Message[]
+  tags              ConversationTag[]
+  internalNotes     InternalNote[]
+  kanbanHistory     KanbanHistory[]
+
+  @@index([tenantId, status])
+  @@index([tenantId, channelId])
+  @@index([tenantId, assignedUserId])
+  @@map("conversations")
+}
+
+model Message {
+  id                 String             @id @default(cuid())
+  tenantId           String             @map("tenant_id")
+  conversationId     String             @map("conversation_id")
+  externalId         String?            @map("external_id")
+  direction          MessageDirection
+  type               MessageType        @default(TEXT)
+  status             MessageStatus      @default(PENDING)
+  body               String?
+  mediaUrl           String?            @map("media_url")
+  mimeType           String?            @map("mime_type")
+  rawPayloadJson     Json?              @map("raw_payload_json")
+  metadata           Json?
+  sentAt             DateTime?          @map("sent_at")
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
+  tenant             Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  conversation       Conversation       @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  attachments        MessageAttachment[]
+
+  @@index([tenantId, conversationId])
+  @@index([tenantId, externalId])
+  @@map("messages")
+}
+
+model MessageAttachment {
+  id          String   @id @default(cuid())
+  tenantId    String   @map("tenant_id")
+  messageId   String   @map("message_id")
+  fileName    String   @map("file_name")
+  mimeType    String   @map("mime_type")
+  fileSize    Int      @map("file_size")
+  url         String
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  message     Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, messageId])
+  @@map("message_attachments")
+}
+
+model Tag {
+  id                String              @id @default(cuid())
+  tenantId          String              @map("tenant_id")
+  name              String
+  color             String?
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
+  tenant            Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contacts          ContactTag[]
+  conversations     ConversationTag[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("tags")
+}
+
+model ContactTag {
+  id         String   @id @default(cuid())
+  tenantId   String   @map("tenant_id")
+  contactId  String   @map("contact_id")
+  tagId      String   @map("tag_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contact    Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  tag        Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, contactId, tagId])
+  @@index([tenantId])
+  @@map("contact_tags")
+}
+
+model ConversationTag {
+  id              String       @id @default(cuid())
+  tenantId        String       @map("tenant_id")
+  conversationId  String       @map("conversation_id")
+  tagId           String       @map("tag_id")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+  tenant          Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  conversation    Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  tag             Tag          @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, conversationId, tagId])
+  @@index([tenantId])
+  @@map("conversation_tags")
+}
+
+model InternalNote {
+  id               String       @id @default(cuid())
+  tenantId         String       @map("tenant_id")
+  conversationId   String       @map("conversation_id")
+  userId           String       @map("user_id")
+  body             String
+  createdAt        DateTime     @default(now()) @map("created_at")
+  updatedAt        DateTime     @updatedAt @map("updated_at")
+  tenant           Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  conversation     Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user             User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, conversationId])
+  @@map("internal_notes")
+}
+
+model QuickReply {
+  id          String   @id @default(cuid())
+  tenantId    String   @map("tenant_id")
+  userId      String?  @map("user_id")
+  title       String
+  body        String
+  category    String?
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@map("quick_replies")
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  tenantId    String   @map("tenant_id")
+  userId      String?  @map("user_id")
+  action      String
+  resource    String
+  payload     Json?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, resource])
+  @@map("audit_logs")
+}
+
+model KanbanStage {
+  id               String          @id @default(cuid())
+  tenantId         String          @map("tenant_id")
+  name             String
+  position         Int
+  color            String?
+  createdAt        DateTime        @default(now()) @map("created_at")
+  updatedAt        DateTime        @updatedAt @map("updated_at")
+  tenant           Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  history          KanbanHistory[]
+  conversations    Conversation[]
+
+  @@unique([tenantId, position])
+  @@index([tenantId])
+  @@map("kanban_stages")
+}
+
+model KanbanHistory {
+  id               String       @id @default(cuid())
+  tenantId         String       @map("tenant_id")
+  conversationId   String       @map("conversation_id")
+  stageId          String       @map("stage_id")
+  movedByUserId    String?      @map("moved_by_user_id")
+  movedAt          DateTime     @default(now()) @map("moved_at")
+  createdAt        DateTime     @default(now()) @map("created_at")
+  updatedAt        DateTime     @updatedAt @map("updated_at")
+  tenant           Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  conversation     Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  stage            KanbanStage  @relation(fields: [stageId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, conversationId])
+  @@map("kanban_history")
+}
+
+model WebhookEvent {
+  id          String   @id @default(cuid())
+  tenantId    String   @map("tenant_id")
+  source      String
+  eventType   String   @map("event_type")
+  payload     Json
+  receivedAt  DateTime @default(now()) @map("received_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, source])
+  @@map("webhook_events")
+}
+
+model JobLog {
+  id          String   @id @default(cuid())
+  tenantId    String?  @map("tenant_id")
+  queue       String
+  jobName     String   @map("job_name")
+  status      String
+  payload     Json?
+  error       String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  tenant      Tenant?  @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, queue])
+  @@map("job_logs")
+}
