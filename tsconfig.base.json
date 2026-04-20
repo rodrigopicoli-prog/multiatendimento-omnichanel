@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "baseUrl": ".",
+    "paths": {
+      "@omni/types": ["packages/types/index.ts"],
+      "@omni/utils": ["packages/utils/index.ts"],
+      "@omni/config": ["packages/config/index.ts"],
+      "@omni/ui": ["packages/ui/src/index.ts"]
+    }
+  }
+}
